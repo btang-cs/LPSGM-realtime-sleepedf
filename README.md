@@ -105,6 +105,58 @@ print(prediction.stage, prediction.probabilities)
 
 Set `min_context=20` if you prefer to suppress predictions until the rolling context is full. `RealtimePSGPreprocessor` and `RealtimeLPSGMPipeline` are also provided for causal chunk-based preprocessing of raw PSG samples before staging.
 
+### Sleep-EDF Batch Real-time Test Results
+
+We also evaluated the real-time causal pipeline on all publicly available Sleep-EDF Expanded sleep-cassette recordings. This is a local public-dataset validation of the real-time workflow, not the official LPSGM held-out test set.
+
+Protocol:
+- Dataset: Sleep-EDF Expanded v1.0.0, sleep-cassette subset
+- Recordings: 153 full-night PSG recordings
+- Files: 306 EDF files, PSG + hypnogram, SHA1 verified
+- Epoch length: 30 seconds
+- Context: current epoch plus up to 19 past epochs
+- No future epochs and no offline full-night voting
+- Weights: `weights/ched32_seqed64_ch9_seql20_block6.pth`
+
+Sleep-EDF does not provide LPSGM's standard 9-channel montage, so the following engineering channel mapping was used:
+
+| LPSGM channel | Sleep-EDF channel |
+|---|---|
+| C3 | EEG Fpz-Cz |
+| O1 | EEG Pz-Oz |
+| E1 | EOG horizontal |
+| Chin | EMG submental |
+
+Overall results:
+
+| Metric | Result |
+|---|---:|
+| Evaluated recordings | 153 / 153 |
+| Evaluated epochs | 414,961 |
+| Accuracy, all epochs | 79.35% |
+| Accuracy, after 20-epoch warmup | 79.25% |
+| Non-Wake accuracy | 56.99% |
+| Balanced accuracy | 64.57% |
+| Macro F1 | 0.5808 |
+| Weighted F1 | 0.8157 |
+| Cohen's kappa | 0.6186 |
+| Total evaluation time | 2706.24 s |
+| Mean evaluation time per epoch | 6.52 ms |
+| Evaluation throughput | 153.33 epochs/s |
+
+The full-recording accuracy is influenced by the large proportion of Wake epochs in Sleep-EDF. Balanced accuracy, Macro F1, and Non-Wake accuracy are more informative for judging sleep-stage performance. Because this test uses Sleep-EDF with an engineering channel mapping and a strictly causal real-time protocol, it should not be compared directly with the offline LPSGM paper results.
+
+To reproduce the same evaluation after downloading Sleep-EDF sleep-cassette EDF files:
+
+```bash
+python tools/evaluate_sleepedf_batch_realtime.py \
+  --data-dir /path/to/physionet-sleep-data \
+  --weights weights/ched32_seqed64_ch9_seql20_block6.pth \
+  --batch-size 64 \
+  --device mps \
+  --output-dir outputs/lpsgm_sleepedf_batch
+```
+
 ## Fine-tuning for Sleep Staging
 
 As demonstrated in our paper, large-scale hybrid pre-training significantly improves sleep staging performance on downstream datasets. We provide scripts and pre-trained models for fine-tuning on your specific dataset.
