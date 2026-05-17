@@ -43,6 +43,68 @@ python inference.py
 
 **Note**: Running local inference requires at least one GPU. If you don't have a GPU available, we provide a web demo at [https://lpsgm.cpolar.top](https://lpsgm.cpolar.top). The complete code for the web demo is in the `web_demo/` directory. However, due to the large file size of full-night EEG recordings and network transmission limitations, we strongly recommend running inference locally.
 
+## Real-time Inference
+
+The original `inference.py` path is an offline full-night workflow: it builds all overlapping 20-epoch windows and votes over them. That means an epoch can benefit from future epochs in the same recording.
+
+For real-time sleep staging, this repo includes `realtime_inference.py`. It loads LPSGM once, keeps a rolling buffer of the latest `seq_len` 30-second epochs, and returns the prediction for the newest epoch only.
+
+### Replay a preprocessed recording epoch by epoch
+
+```bash
+python realtime_demo.py \
+  --processed-npz sample_preprocessed.npz \
+  --weights weights/ched32_seqed64_ch9_seql20_block6.pth \
+  --output-csv realtime_predictions.csv
+```
+
+The NPZ file should contain one or more LPSGM channel arrays such as `C3`, `C4`, `E1`, `E2`, each shaped `(num_epochs, 3000)`.
+
+### Replay an EDF as a real-time simulation
+
+```bash
+python realtime_demo.py \
+  --edf subject.edf \
+  --channel-map-json channel_map.json \
+  --weights weights/ched32_seqed64_ch9_seql20_block6.pth \
+  --output-csv realtime_predictions.csv
+```
+
+`channel_map.json` maps LPSGM channel names to EDF channel options. Differential channels are written as two-item arrays:
+
+```json
+{
+  "C3": [["C3", "M2"], "C3-M2"],
+  "C4": [["C4", "M1"], "C4-M1"],
+  "E1": [["E1", "M2"], "LOC-M2"],
+  "E2": [["E2", "M1"], "ROC-M1"]
+}
+```
+
+### Use the Python API in a streaming system
+
+```python
+from realtime_inference import RealtimeLPSGMSleepStager
+
+stager = RealtimeLPSGMSleepStager(
+    weights="weights/ched32_seqed64_ch9_seql20_block6.pth",
+    channel_order=["C3", "C4", "E1", "E2"],
+    min_context=1,
+)
+
+# epoch is one newly completed 30-second epoch, already filtered,
+# resampled to 100 Hz, normalized, and shaped as 3000 samples/channel.
+prediction = stager.push_epoch({
+    "C3": c3_epoch,
+    "C4": c4_epoch,
+    "E1": e1_epoch,
+    "E2": e2_epoch,
+})
+print(prediction.stage, prediction.probabilities)
+```
+
+Set `min_context=20` if you prefer to suppress predictions until the rolling context is full. `RealtimePSGPreprocessor` and `RealtimeLPSGMPipeline` are also provided for causal chunk-based preprocessing of raw PSG samples before staging.
+
 ## Fine-tuning for Sleep Staging
 
 As demonstrated in our paper, large-scale hybrid pre-training significantly improves sleep staging performance on downstream datasets. We provide scripts and pre-trained models for fine-tuning on your specific dataset.
